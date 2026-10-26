@@ -1,0 +1,16 @@
+{
+  "name": "Mijn Bekerkast",
+  "short_name": "Bekerkast",
+  "description": "Houd bij welke Starbucks-mokken en ornamenten je hebt en welke je nog zoekt.",
+  "lang": "nl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F3F5F2",
+  "theme_color": "#1F6B57",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

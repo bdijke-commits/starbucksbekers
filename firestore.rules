@@ -1,0 +1,54 @@
+rules_version = '2';
+// Plak dit in Firebase-console > Firestore Database > Regels en klik op Publiceren.
+// Ingesteld voor bdijke@gmail.com (in kleine letters).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() == 'bdijke@gmail.com';
+    }
+
+    // Wat je hebt en wat je zoekt: iedereen mag kijken, alleen jij wijzigt.
+    match /kast/main {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    // Je notities: alleen voor jou.
+    match /kast/notities {
+      allow read, write: if isOwner();
+    }
+
+    // Eigen foto's (verkleind): iedereen mag kijken, alleen jij wijzigt.
+    match /fotos/{mug} {
+      allow read: if true;
+      allow create, update: if isOwner()
+        && request.resource.data.img is string
+        && request.resource.data.img.size() < 400000;
+      allow delete: if isOwner();
+    }
+
+    // Reacties: iedereen mag lezen en (na automatisch anoniem inloggen) reageren.
+    // Reacties kunnen niet worden aangepast; jij kunt ze verwijderen,
+    // en de schrijver kan zijn eigen reactie verwijderen.
+    match /reacties/{id} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly(['mug', 'naam', 'tekst', 'uid', 't'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.mug is int
+        && request.resource.data.naam is string
+        && request.resource.data.naam.size() > 0
+        && request.resource.data.naam.size() <= 40
+        && request.resource.data.tekst is string
+        && request.resource.data.tekst.size() > 0
+        && request.resource.data.tekst.size() <= 600
+        && request.resource.data.t == request.time;
+      allow delete: if isOwner()
+        || (request.auth != null && resource.data.uid == request.auth.uid);
+      allow update: if false;
+    }
+  }
+}

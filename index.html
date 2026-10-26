@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mijn Bekerkast</title>
+<meta name="description" content="Alle Starbucks-stadsmokken en ornamenten: wat staat er in de kast en wat wordt er nog gezocht.">
+<meta name="theme-color" content="#1F6B57">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bekerkast">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="banner" id="demoBanner" hidden>Demo-modus: Firebase is nog niet ingesteld in config.js. Alles wordt alleen in deze browser bewaard.</div>
+
+<div class="wrap">
+  <header class="top">
+    <div class="topbar">
+      <h1>Mijn Bekerkast</h1>
+      <button class="ghost" id="loginBtn">Inloggen</button>
+    </div>
+    <p class="lede" id="lede">Alle Starbucks-stadsmokken en ornamenten. Kijk wat er in de kast staat en wat er nog gezocht wordt, en laat een reactie achter bij een beker.</p>
+    <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Collectie laden…</span></div>
+    <div class="migrate" id="migrate" hidden>
+      <span>Je collectie uit de Claude-versie staat klaar om over te zetten.</span>
+      <button class="btn" id="migrateBtn">Collectie overzetten</button>
+    </div>
+  </header>
+
+  <section class="totals" aria-label="Totaal">
+    <div class="stat have"><span class="tot-lbl">In de kast</span><span class="big" id="tHave">0</span></div>
+    <div class="stat want"><span class="tot-lbl">Op verlanglijst</span><span class="big" id="tWant">0</span></div>
+    <div class="stat"><span class="tot-lbl">Ontbreekt nog</span><span class="big" id="tMiss">0</span></div>
+    <button class="stat stat-btn" id="tReact"><span class="tot-lbl">Reacties</span><span class="big" id="tReactN">0</span></button>
+  </section>
+  <div class="series" id="series"></div>
+</div>
+
+<div class="filters">
+  <div class="wrap">
+    <div class="frow">
+      <input type="search" id="q" placeholder="Zoek stad, land, thema…" aria-label="Zoeken">
+      <div class="seg" id="segStatus" role="group" aria-label="Status">
+        <button data-v="all" aria-pressed="true">Alles</button>
+        <button data-v="h" aria-pressed="false">In de kast</button>
+        <button data-v="w" aria-pressed="false">Verlanglijst</button>
+        <button data-v="m" aria-pressed="false">Ontbreekt</button>
+        <button data-v="r" aria-pressed="false">Met reacties</button>
+      </div>
+    </div>
+    <div class="frow">
+      <div class="seg" id="segType" role="group" aria-label="Soort">
+        <button data-v="all" aria-pressed="true">Alle soorten</button>
+        <button data-v="0" aria-pressed="false">Mokken</button>
+        <button data-v="1" aria-pressed="false">Ornamenten</button>
+        <button data-v="2" aria-pressed="false">Mini's</button>
+      </div>
+      <select id="land" aria-label="Land"><option value="">Alle landen</option></select>
+      <select id="thema" aria-label="Thema"><option value="">Alle thema's</option></select>
+      <select id="sort" aria-label="Sorteren">
+        <option value="az">Naam A–Z</option>
+        <option value="land">Per land</option>
+        <option value="series">Per serie</option>
+      </select>
+      <span class="count" id="count"></span>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <div class="grid" id="grid"></div>
+  <div class="more"><button id="moreBtn" hidden>Toon meer</button></div>
+</main>
+<footer class="wrap">Foto's en gegevens: <a href="https://starbucks-mugs.com/" target="_blank" rel="noopener">starbucks-mugs.com</a> (oktober 2026). Voor 386 Icon-mokken komt de foto uit een eBay-advertentie; 40 Icon-mokken zijn getekend in hun themakleur.</footer>
+
+<!-- Details van een beker -->
+<dialog id="dlg" aria-labelledby="dlTitle">
+  <div class="dl-top">
+    <div class="dl-ph" id="dlPh"></div>
+    <button class="x" id="dlClose" aria-label="Sluiten">×</button>
+  </div>
+  <div class="dl-body">
+    <h2 id="dlTitle"></h2>
+    <div class="dl-tags" id="dlTags"></div>
+    <p class="icinfo" id="dlIcon" hidden></p>
+    <p class="icinfo" id="dlSrc" hidden>Foto uit een eBay-advertentie; kleine afwijkingen zijn mogelijk.</p>
+    <p class="statusline" id="dlStatus"></p>
+
+    <div class="own-only">
+      <div class="acts" style="padding:0">
+        <button class="bh" id="dlHave" aria-pressed="false">Heb ik</button>
+        <button class="bw" id="dlWant" aria-pressed="false">Wil ik</button>
+      </div>
+      <label class="l" for="dlNote">Notitie (alleen voor jou)</label>
+      <textarea id="dlNote" placeholder="Bijv. gekocht in 2023, staat op plank 2, nog zonder doos…"></textarea>
+      <div class="fotoacts">
+        <label for="dlFile"><span id="dlFileLbl">Eigen foto toevoegen</span><input type="file" id="dlFile" accept="image/*"></label>
+        <button id="dlFotoDel" hidden>Eigen foto weghalen</button>
+        <small id="dlFotoMsg"></small>
+      </div>
+    </div>
+
+    <section class="react" aria-labelledby="reactKop">
+      <h3 id="reactKop">Reacties</h3>
+      <ul class="rlist" id="rList"></ul>
+      <form id="rForm" class="rform">
+        <input id="rNaam" maxlength="40" placeholder="Je naam" aria-label="Je naam" autocomplete="name" required>
+        <textarea id="rTekst" maxlength="600" placeholder="Bijv. deze heb ik dubbel, wil je hem hebben?" aria-label="Je reactie" required></textarea>
+        <div class="rform-acts"><button class="btn" id="rSend" type="submit">Plaats reactie</button><small id="rMsg"></small></div>
+      </form>
+    </section>
+
+    <div class="dl-acts"><a id="dlLink" href="#" target="_blank" rel="noopener">Bekijk op starbucks-mugs.com ↗</a></div>
+  </div>
+</dialog>
+
+<!-- Inloggen -->
+<dialog id="loginDlg" aria-labelledby="loginKop">
+  <form class="dl-body" id="loginForm">
+    <h2 id="loginKop">Inloggen om te bewerken</h2>
+    <p class="icinfo">Alleen de eigenaar van de bekerkast kan inloggen. Bezoekers kunnen zonder inloggen kijken en reageren.</p>
+    <label class="l" for="lEmail">E-mailadres</label>
+    <input id="lEmail" type="email" autocomplete="username" required>
+    <label class="l" for="lPass">Wachtwoord</label>
+    <input id="lPass" type="password" autocomplete="current-password" required>
+    <div class="rform-acts"><button class="btn" type="submit">Inloggen</button><button class="ghost" type="button" id="loginCancel">Annuleren</button><small id="lMsg"></small></div>
+  </form>
+</dialog>
+
+<script type="module" src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>
