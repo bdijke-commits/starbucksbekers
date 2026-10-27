@@ -1,6 +1,6 @@
 // Service worker: maakt de app installeerbaar en bruikbaar zonder internet.
 // Verhoog VERSIE als je bestanden aanpast, zodat telefoons de nieuwe versie ophalen.
-const VERSIE = 'bekerkast-v3';
+const VERSIE = 'bekerkast-v4';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'config.js', 'data.json',
   'startcollectie.json', 'manifest.webmanifest',

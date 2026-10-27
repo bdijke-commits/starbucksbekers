@@ -22,7 +22,7 @@
   <header class="top">
     <div class="topbar">
       <h1>Mijn Bekerkast</h1>
-      <button class="ghost" id="loginBtn">Inloggen</button>
+      <div class="actsbar"><button class="btn own-only" id="eigenBtn">+ Eigen beker</button><button class="ghost" id="loginBtn">Inloggen</button></div>
     </div>
     <p class="lede" id="lede">Alle Starbucks-stadsmokken en ornamenten. Kijk wat er in de kast staat en wat er nog gezocht wordt, en laat een reactie achter bij een beker.</p>
     <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Collectie laden…</span></div>
@@ -89,8 +89,14 @@
     <div class="dl-tags" id="dlTags"></div>
     <p class="icinfo" id="dlIcon" hidden></p>
     <p class="icinfo" id="dlSrc" hidden>Foto uit een eBay-advertentie; kleine afwijkingen zijn mogelijk.</p>
+    <p class="icinfo" id="dlOms" hidden></p>
     <p class="statusline" id="dlStatus"></p>
 
+    <div class="own-only eigen-acts" id="dlEigen" hidden>
+      <button class="ghost" id="dlEdit" type="button">Gegevens bewerken</button>
+      <button class="ghost danger" id="dlDel" type="button">Verwijderen</button>
+      <span id="dlDelConfirm" hidden>Zeker weten? <button class="ghost danger" id="dlDelYes" type="button">Ja, verwijder</button> <button class="ghost" id="dlDelNo" type="button">Nee</button></span>
+    </div>
     <div class="own-only">
       <div class="acts" style="padding:0">
         <button class="bh" id="dlHave" aria-pressed="false">Heb ik</button>
@@ -117,6 +123,31 @@
 
     <div class="dl-acts"><a id="dlLink" href="#" target="_blank" rel="noopener">Bekijk op starbucks-mugs.com ↗</a></div>
   </div>
+</dialog>
+
+<!-- Eigen beker toevoegen / bewerken -->
+<dialog id="edlg" aria-labelledby="eTitle">
+  <form class="dl-body" id="eForm">
+    <h2 id="eTitle">Eigen beker toevoegen</h2>
+    <p class="icinfo">Voor bekers die niet in de lijst van starbucks-mugs.com staan.</p>
+    <div class="efoto">
+      <div class="eprev" id="ePrev" hidden></div>
+      <label class="ghost filebtn" for="eFile"><span id="eFotoLbl">Foto toevoegen</span><input type="file" id="eFile" accept="image/*"></label>
+    </div>
+    <label class="l" for="eNaam">Naam *</label>
+    <input id="eNaam" required maxlength="80" placeholder="Bijv. Been There – Amsterdam (personeelsmok)">
+    <div class="egrid">
+      <label class="l">Serie<select id="serEigen"></select></label>
+      <label class="l">Soort<select id="eSoort"><option value="0">Mok</option><option value="1">Ornament</option><option value="2">Mini</option></select></label>
+      <label class="l">Land<input id="eLand" list="landList" maxlength="60"></label>
+      <label class="l">Jaar<input id="eJaar" maxlength="20" placeholder="Bijv. 2019"></label>
+    </div>
+    <label class="l" for="eOms">Omschrijving</label>
+    <textarea id="eOms" maxlength="1000" placeholder="Bijv. limited edition, alleen verkocht in de flagship store"></textarea>
+    <label class="l" id="eStatusL">Status<select id="eStatus"><option value="h">In de kast</option><option value="w">Op verlanglijst</option><option value="">Geen van beide</option></select></label>
+    <datalist id="landList"></datalist>
+    <div class="rform-acts"><button class="btn" id="eSave" type="submit">Opslaan</button><button class="ghost" type="button" id="eCancel">Annuleren</button><small id="eMsg"></small></div>
+  </form>
 </dialog>
 
 <!-- Inloggen -->

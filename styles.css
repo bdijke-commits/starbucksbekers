@@ -154,3 +154,19 @@ body:not(.owner) .own-only{display:none!important}
 .rc{position:absolute;top:8px;right:8px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--surface);color:var(--accent);border:1px solid var(--line)}
 #loginDlg .dl-body{gap:8px}
 #loginDlg h2{margin-bottom:4px}
+
+/* ---- eigen bekers ---- */
+.actsbar{display:flex;gap:8px;flex-wrap:wrap}
+.eigen-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.danger{color:#B3392F}
+#edlg .dl-body{gap:8px}
+#edlg input,#edlg select,#edlg textarea{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%;min-width:0}
+.egrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.egrid label{display:flex;flex-direction:column;gap:4px;min-width:0}
+@media (max-width:420px){.egrid{grid-template-columns:1fr}}
+#eStatusL{display:flex;flex-direction:column;gap:4px}
+.efoto{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.eprev{width:140px;aspect-ratio:180/140;border-radius:10px;background:var(--photo) center/cover no-repeat;border:1px solid var(--line)}
+.filebtn{position:relative;display:inline-block}
+.filebtn input{position:absolute;opacity:0;width:1px;height:1px}
+.filebtn:focus-within{outline:2px solid var(--accent);outline-offset:2px}

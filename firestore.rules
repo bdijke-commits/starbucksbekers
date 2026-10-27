@@ -30,6 +30,12 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
+    // Eigen toegevoegde bekers (niet uit de lijst): iedereen mag kijken, alleen jij wijzigt.
+    match /eigen/{id} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
     // Reacties: iedereen mag lezen en (na automatisch anoniem inloggen) reageren.
     // Reacties kunnen niet worden aangepast; jij kunt ze verwijderen,
     // en de schrijver kan zijn eigen reactie verwijderen.
@@ -38,7 +44,8 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.keys().hasOnly(['mug', 'naam', 'tekst', 'uid', 't'])
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.mug is int
+        && (request.resource.data.mug is int
+            || (request.resource.data.mug is string && request.resource.data.mug.size() <= 40))
         && request.resource.data.naam is string
         && request.resource.data.naam.size() > 0
         && request.resource.data.naam.size() <= 40

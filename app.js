@@ -7,9 +7,13 @@ const FB = 'https://www.gstatic.com/firebasejs/10.12.2/';
 
 /* ================= gegevens laden ================= */
 const D = await fetch('data.json').then(r => r.json());
-const ITEMS = D.items, SER = D.series, TYPL = ['Mok', 'Ornament', 'Mini'];
+const BASE = D.items, SER = [...D.series, 'Overig'], TYPL = ['Mok', 'Ornament', 'Mini'];
+let ITEMS = BASE.slice();
 const byId = new Map(ITEMS.map(i => [i.id, i]));
-for (const i of ITEMS) i.q = (i.t + ' ' + i.l + ' ' + i.g + ' ' + i.th.join(' ') + ' ' + i.sub + ' ' + (i.ic ? i.ic.join(' ') : '')).toLowerCase();
+const mkQ = i => { i.q = (i.t + ' ' + i.l + ' ' + i.g + ' ' + i.th.join(' ') + ' ' + i.sub + ' ' + (i.ic ? i.ic.join(' ') : '') + ' ' + (i.oms || '') + ' ' + (i.jaar || '')).toLowerCase() };
+BASE.forEach(mkQ);
+const pid = v => /^\d+$/.test(v) ? +v : v;   // catalogusbekers hebben een getal, eigen bekers een tekst-id
+let eigen = [];       // eigen toevoegingen: [{id, naam, serie, soort, land, jaar, oms, t}]
 const ICOL = { 'Red': '#C2312A', 'Dark Blue': '#22407C', 'Dark Brown': '#5A3926', 'Dark Green': '#23603A', 'Light Blue': '#3F9BCF', 'Blue': '#2B68B3', 'Light Green': '#6FAE3C', 'Orange': '#E07226', 'Brown': '#8A5A3B', 'Purple': '#6C3C8E', 'Yellow': '#D9A611', 'Plum': '#7A2C55' };
 const CNL = { 'Red': 'rood', 'Dark Blue': 'donkerblauw', 'Dark Brown': 'donkerbruin', 'Dark Green': 'donkergroen', 'Light Blue': 'lichtblauw', 'Blue': 'blauw', 'Light Green': 'lichtgroen', 'Orange': 'oranje', 'Brown': 'bruin', 'Purple': 'paars', 'Yellow': 'geel', 'Plum': 'pruim' };
 
@@ -47,6 +51,9 @@ function demoBackend() {
     async delPhoto(id) { try { localStorage.removeItem('bk-demo-foto-' + id) } catch { } },
     async addComment(c) { const a = get('bk-demo-comments', []); a.unshift({ ...c, id: String(Date.now()), uid: 'demo', t: Date.now() }); put('bk-demo-comments', a); emit('comments', a.map(x => ({ ...x, t: new Date(x.t) }))) },
     async delComment(cid) { const a = get('bk-demo-comments', []).filter(x => x.id !== cid); put('bk-demo-comments', a); emit('comments', a.map(x => ({ ...x, t: new Date(x.t) }))) },
+    onEigen(cb) { L.eigen = [cb]; cb(Object.entries(get('bk-demo-eigen', {})).map(([id, v]) => ({ id, ...v }))) },
+    async saveEigen(id, data) { const o = get('bk-demo-eigen', {}); id = id || 'e-' + Math.random().toString(36).slice(2, 10); o[id] = data; put('bk-demo-eigen', o); L.eigen.forEach(f => f(Object.entries(o).map(([k, v]) => ({ id: k, ...v })))); return id },
+    async delEigen(id) { const o = get('bk-demo-eigen', {}); delete o[id]; put('bk-demo-eigen', o); L.eigen.forEach(f => f(Object.entries(o).map(([k, v]) => ({ id: k, ...v })))) },
     async login() { owner = true; put('bk-demo-owner', true); emit('auth', { owner, uid: 'demo' }) },
     async logout() { owner = false; put('bk-demo-owner', false); emit('auth', { owner, uid: 'demo' }) },
   };
@@ -98,6 +105,9 @@ async function firebaseBackend() {
       await F.addDoc(F.collection(db, 'reacties'), { mug: c.mug, naam: c.naam, tekst: c.tekst, uid: auth.currentUser.uid, t: F.serverTimestamp() });
     },
     delComment: cid => F.deleteDoc(F.doc(db, 'reacties', cid)),
+    onEigen(cb) { F.onSnapshot(F.collection(db, 'eigen'), s => cb(s.docs.map(d => ({ id: d.id, ...d.data() }))), () => { }) },
+    async saveEigen(id, data) { const r = id ? F.doc(db, 'eigen', id) : F.doc(db, 'eigen', 'e-' + F.doc(F.collection(db, 'eigen')).id.slice(0, 12)); await F.setDoc(r, data); return r.id },
+    delEigen: id => F.deleteDoc(F.doc(db, 'eigen', id)),
     login: (e, p) => A.signInWithEmailAndPassword(auth, e, p),
     logout: () => A.signOut(auth),
   };
@@ -123,7 +133,8 @@ api.onState((it, exists) => {
   showMigrate(); renderAll();
 });
 api.onNotes(n => { notes = n; if (dlgId != null) fillDialog(dlgId, false) });
-api.onComments(c => { comments = c; renderTotals(); refreshCommentBadges(); if (dlgId != null) renderComments(dlgId) });
+api.onEigen(applyEigen);
+  api.onComments(c => { comments = c; renderTotals(); refreshCommentBadges(); if (dlgId != null) renderComments(dlgId) });
 }
 window.addEventListener('online', () => setSync('ok', 'Bijgewerkt'));
 window.addEventListener('offline', () => setSync('', 'Offline · laatst bekende stand'));
@@ -183,10 +194,16 @@ function photo(el, i) {
 /* ================= filters ================= */
 const F = { q: '', status: 'all', type: 'all', series: null, land: '', thema: '', sort: 'az' };
 const PAGE = 96; let shown = PAGE, list = [];
-const lands = [...new Set(ITEMS.map(i => i.l).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl'));
-$('land').insertAdjacentHTML('beforeend', lands.map(l => `<option>${l}</option>`).join('') + '<option value="__none">Zonder land (thema/cruise)</option>');
-const themas = [...new Set(ITEMS.flatMap(i => i.th))].sort((a, b) => a.localeCompare(b, 'nl'));
-$('thema').insertAdjacentHTML('beforeend', themas.map(t => `<option>${t}</option>`).join(''));
+function fillOptions() {
+  const lands = [...new Set(ITEMS.map(i => i.l).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'nl'));
+  $('land').innerHTML = '<option value="">Alle landen</option>' + lands.map(l => `<option>${esc(l)}</option>`).join('') + '<option value="__none">Zonder land (thema/cruise)</option>';
+  $('land').value = F.land && (F.land === '__none' || lands.includes(F.land)) ? F.land : ''; F.land = $('land').value;
+  $('landList').innerHTML = lands.map(l => `<option value="${esc(l)}">`).join('');
+  const themas = [...new Set(ITEMS.flatMap(i => i.th))].sort((a, b) => a.localeCompare(b, 'nl'));
+  $('thema').innerHTML = '<option value="">Alle thema\'s</option>' + themas.map(t => `<option>${esc(t)}</option>`).join('');
+  $('thema').value = themas.includes(F.thema) ? F.thema : ''; F.thema = $('thema').value;
+}
+fillOptions();
 function seg(id, key) {
   $(id).addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return; setSeg(id, key, b.dataset.v);
@@ -241,7 +258,7 @@ function renderList() {
   list = filtered(); const cc = commentCount();
   const g = $('grid'), part = list.slice(0, shown);
   g.innerHTML = part.length ? part.map(i => cardHTML(i, cc)).join('') : '<p class="empty">Geen bekers gevonden met deze filters.</p>';
-  g.querySelectorAll('.card').forEach(c => photo(c.querySelector('.ph'), byId.get(+c.dataset.id)));
+  g.querySelectorAll('.card').forEach(c => photo(c.querySelector('.ph'), byId.get(pid(c.dataset.id))));
   $('moreBtn').hidden = list.length <= shown;
   $('moreBtn').textContent = `Toon meer (${list.length - shown} over)`;
   $('count').textContent = `${list.length.toLocaleString('nl-NL')} bekers`;
@@ -254,7 +271,7 @@ function renderTotals() {
   $('tMiss').textContent = (ITEMS.length - h).toLocaleString('nl-NL');
   $('tReactN').textContent = comments.length.toLocaleString('nl-NL');
   $('series').innerHTML = SER.map((n, k) => {
-    const p = per[k]; return `<button class="ser" data-s="${k}" aria-pressed="${F.series === k}">
+    const p = per[k]; if (!p.t) return ''; return `<button class="ser" data-s="${k}" aria-pressed="${F.series === k}">
     <b>${n}</b><span class="bar"><i style="width:${p.h / p.t * 100}%"></i><i class="w" style="width:${p.w / p.t * 100}%"></i></span>
     <span class="num">${p.h} / ${p.t} in kast${p.w ? ` · ${p.w} gezocht` : ''}</span></button>`
   }).join('');
@@ -268,7 +285,7 @@ function renderAll() {
   if (dlgId != null) fillDialog(dlgId, false);
 }
 function updateCard(c) {
-  const i = byId.get(+c.dataset.id), s = st(i.id);
+  const i = byId.get(pid(c.dataset.id)), s = st(i.id);
   c.className = 'card ' + s;
   let b = c.querySelector('.badge');
   if (s) { if (!b) { b = document.createElement('span'); b.className = 'badge'; c.querySelector('.ph').after(b) } b.textContent = badgeTxt(s) } else if (b) b.remove();
@@ -280,7 +297,7 @@ function updateCard(c) {
 function refreshCommentBadges() {
   const cc = commentCount();
   $('grid').querySelectorAll('.card').forEach(c => {
-    const n = cc.get(+c.dataset.id) || 0; let r = c.querySelector('.rc');
+    const n = cc.get(pid(c.dataset.id)) || 0; let r = c.querySelector('.rc');
     if (n) { if (!r) { r = document.createElement('span'); r.className = 'rc'; c.querySelector('.ph').after(r) } r.textContent = `${n} ${n === 1 ? 'reactie' : 'reacties'}` } else if (r) r.remove();
   });
   if (F.status === 'r') renderList();
@@ -297,7 +314,7 @@ async function toggle(id, to) {
   try { await api.setItem(id, keep ? v : null) } catch (e) { setSync('', 'Opslaan mislukt (' + (e.code || e.message) + ')') }
 }
 $('grid').addEventListener('click', e => {
-  const c = e.target.closest('.card'); if (!c) return; const id = +c.dataset.id;
+  const c = e.target.closest('.card'); if (!c) return; const id = pid(c.dataset.id);
   if (e.target.closest('.bh')) toggle(id, 'h');
   else if (e.target.closest('.bw')) toggle(id, 'w');
   else if (e.target.closest('.ph')) openDialog(id);
@@ -311,7 +328,10 @@ function fillDialog(id, full) {
   if (full) {
     $('dlTitle').textContent = i.t;
     $('dlTags').innerHTML = [SER[i.s], TYPL[i.k], i.sub, i.l, ...i.th].filter(Boolean).map(t => `<span class="tag">${esc(t)}</span>`).join('');
-    $('dlLink').href = 'https://starbucks-mugs.com/mug/' + i.u + '/';
+    $('dlLink').hidden = !!i.own; if (!i.own) $('dlLink').href = 'https://starbucks-mugs.com/mug/' + i.u + '/';
+    $('dlEigen').hidden = !i.own; $('dlDelConfirm').hidden = true;
+    $('dlOms').hidden = !(i.own && (i.oms || i.jaar));
+    if (i.own) $('dlOms').innerHTML = [i.jaar ? `Jaar <b>${esc(i.jaar)}</b>` : '', i.oms ? esc(i.oms).replace(/\n/g, '<br>') : ''].filter(Boolean).join(' · ');
     const ic = i.ic; $('dlIcon').hidden = !ic;
     if (ic) $('dlIcon').innerHTML = [ic[0] ? `Themakleur <b>${esc(CNL[ic[0]] || ic[0].toLowerCase())}</b>` : '', ic[1] ? `voorkant <b>${esc(ic[1])}</b>` : '', ic[2] ? `achterkant <b>${esc(ic[2])}</b>` : '', ic[3] ? `<b>${esc(ic[3])}</b>` : ''].filter(Boolean).join(' · ');
     $('dlNote').value = notes[id] || ''; $('dlFotoMsg').textContent = ''; $('rMsg').textContent = '';
@@ -392,6 +412,71 @@ $('rForm').addEventListener('submit', async e => {
   try { await api.addComment({ mug: dlgId, naam, tekst }); $('rTekst').value = ''; $('rMsg').textContent = 'Geplaatst.' }
   catch (err) { $('rMsg').textContent = 'Plaatsen lukte niet (' + (err.code || 'geen verbinding') + ').' }
   finally { $('rSend').disabled = false }
+});
+
+
+/* ================= eigen bekers ================= */
+function applyEigen(list) {
+  eigen = list;
+  for (const [k, v] of byId) if (v.own) byId.delete(k);
+  const extra = list.map(e => {
+    const s = SER.indexOf(e.serie);
+    const i = { id: e.id, own: true, n: e.naam || 'Naamloze beker', t: e.naam || 'Naamloze beker', s: s >= 0 ? s : SER.length - 1, k: +e.soort || 0, sub: '', l: e.land || '', u: '', g: '', th: ['Eigen toevoeging'], oms: e.oms || '', jaar: e.jaar || '', tt: e.t || 0 };
+    mkQ(i); byId.set(i.id, i); return i;
+  });
+  ITEMS = BASE.concat(extra);
+  fillOptions(); renderTotals(); renderList();
+  if (dlgId != null) { if (byId.has(dlgId)) fillDialog(dlgId, true); else $('dlg').close() }
+}
+$('serEigen').innerHTML = SER.map(n => `<option>${esc(n)}</option>`).join('');
+let eId = null, eFoto = null;
+function openEigen(id) {
+  if (!isOwner) return;
+  eId = id; eFoto = null; const e = id ? eigen.find(x => x.id === id) || {} : {};
+  $('eTitle').textContent = id ? 'Eigen beker bewerken' : 'Eigen beker toevoegen';
+  $('eNaam').value = e.naam || ''; $('serEigen').value = e.serie || 'Overig'; $('eSoort').value = String(e.soort || 0);
+  $('eLand').value = e.land || ''; $('eJaar').value = e.jaar || ''; $('eOms').value = e.oms || '';
+  $('eStatus').value = id ? st(id) : 'h'; $('eStatusL').hidden = !!id;
+  const cur = id && hasOwn(id) ? photoCache.get(id) : null;
+  $('ePrev').style.backgroundImage = cur ? `url("${cur}")` : ''; $('ePrev').hidden = !cur;
+  if (!cur && id && hasOwn(id)) api.getPhoto(id).then(u => { if (u && eId === id) { photoCache.set(id, u); $('ePrev').style.backgroundImage = `url("${u}")`; $('ePrev').hidden = false } }).catch(() => { });
+  $('eFotoLbl').textContent = cur || (id && hasOwn(id)) ? 'Andere foto kiezen' : 'Foto toevoegen';
+  $('eMsg').textContent = ''; $('eSave').disabled = false; $('edlg').showModal();
+}
+$('eigenBtn').addEventListener('click', () => openEigen(null));
+$('dlEdit').addEventListener('click', () => { const id = dlgId; $('dlg').close(); openEigen(id) });
+$('dlDel').addEventListener('click', () => { $('dlDelConfirm').hidden = false });
+$('dlDelNo').addEventListener('click', () => { $('dlDelConfirm').hidden = true });
+$('dlDelYes').addEventListener('click', async () => {
+  const id = dlgId; if (id == null) return; $('dlg').close();
+  try {
+    await api.delEigen(id);
+    if (items[id]) await api.setItem(id, null);
+    if (notes[id]) api.setNote(id, '').catch(() => { });
+    api.delPhoto(id).catch(() => { });
+  } catch (e) { setSync('', 'Verwijderen mislukt (' + (e.code || e.message) + ')') }
+});
+$('eFile').addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
+  $('eMsg').textContent = 'Foto verwerken…';
+  try { eFoto = await shrink(file); $('ePrev').style.backgroundImage = `url("${eFoto}")`; $('ePrev').hidden = false; $('eFotoLbl').textContent = 'Andere foto kiezen'; $('eMsg').textContent = '' }
+  catch { $('eMsg').textContent = 'Deze foto kon niet gelezen worden.' }
+});
+$('eCancel').addEventListener('click', () => $('edlg').close());
+$('eForm').addEventListener('submit', async e => {
+  e.preventDefault(); if (!isOwner) return;
+  $('eSave').disabled = true; $('eMsg').textContent = 'Opslaan…';
+  try {
+    const old = eId ? eigen.find(x => x.id === eId) : null;
+    const data = { naam: $('eNaam').value.trim(), serie: $('serEigen').value, soort: +$('eSoort').value, land: $('eLand').value.trim(), jaar: $('eJaar').value.trim(), oms: $('eOms').value.trim(), t: (old && old.t) || Date.now() };
+    const id = await api.saveEigen(eId, data);
+    const cur = items[id] || {};
+    const v = { ...cur };
+    if (!eId) { const s0 = $('eStatus').value; if (s0) v.s = s0 }
+    if (eFoto) { await api.setPhoto(id, eFoto); photoCache.set(id, eFoto); v.f = true }
+    if (JSON.stringify(v) !== JSON.stringify(cur)) { items = { ...items, [id]: v }; await api.setItem(id, (v.s || v.f) ? v : null) }
+    $('edlg').close(); refreshItem(id);
+  } catch (err) { $('eSave').disabled = false; $('eMsg').textContent = 'Opslaan lukte niet: ' + (err.code || err.message) }
 });
 
 renderTotals(); renderList(); connect();
