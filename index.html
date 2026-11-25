@@ -13,7 +13,7 @@
 <meta name="apple-mobile-web-app-title" content="Bekerkast">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 <div class="banner" id="demoBanner" hidden>Demo-modus: Firebase is nog niet ingesteld in config.js. Alles wordt alleen in deze browser bewaard.</div>
@@ -22,7 +22,7 @@
   <header class="top">
     <div class="topbar">
       <h1>Mijn Bekerkast</h1>
-      <div class="actsbar"><button class="btn own-only" id="eigenBtn">+ Eigen beker</button><button class="ghost" id="loginBtn">Inloggen</button></div>
+      <div class="actsbar"><button class="btn" id="scanBtn">Herken een mok</button><button class="btn own-only" id="eigenBtn">+ Eigen beker</button><button class="ghost" id="loginBtn">Inloggen</button></div>
     </div>
     <p class="lede" id="lede">Alle Starbucks-stadsmokken en ornamenten. Kijk wat er in de kast staat en wat er nog gezocht wordt, en laat een reactie achter bij een beker.</p>
     <div class="sync"><span class="dot" id="syncDot"></span><span id="syncTxt">Collectie laden…</span></div>
@@ -125,6 +125,21 @@
   </div>
 </dialog>
 
+<!-- Mok herkennen -->
+<dialog id="scanDlg" aria-labelledby="scanKop">
+  <div class="dl-body">
+    <div class="topbar"><h2 id="scanKop">Herken een mok</h2><button class="ghost" id="scanClose" type="button">Sluiten</button></div>
+    <p class="icinfo">Maak een foto van een mok, zo recht mogelijk van voren met de naam van de stad in beeld. De app zoekt welke mok het is en laat zien of hij al in de kast staat.</p>
+    <div class="scanrow">
+      <label class="btn filebtn" for="scanFile">Foto maken of kiezen<input type="file" id="scanFile" accept="image/*" capture="environment"></label>
+      <img id="scanPrev" alt="Je foto" hidden>
+    </div>
+    <p class="scanmsg" id="scanMsg" aria-live="polite"></p>
+    <div class="scanres" id="scanRes"></div>
+    <div id="scanZoek" hidden class="rform-acts"><span class="icinfo">Niet de goede mok?</span><input id="scanQ" placeholder="Zoek op naam, bijv. Amsterdam" aria-label="Zoek op naam"><button class="ghost" id="scanQBtn" type="button">Zoeken</button></div>
+  </div>
+</dialog>
+
 <!-- Eigen beker toevoegen / bewerken -->
 <dialog id="edlg" aria-labelledby="eTitle">
   <form class="dl-body" id="eForm">
@@ -163,7 +178,7 @@
   </form>
 </dialog>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=6"></script>
 <script>
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));

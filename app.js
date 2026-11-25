@@ -479,4 +479,131 @@ $('eForm').addEventListener('submit', async e => {
   } catch (err) { $('eSave').disabled = false; $('eMsg').textContent = 'Opslaan lukte niet: ' + (err.code || err.message) }
 });
 
+
+/* ================= mok herkennen met de camera ================= */
+// Herkenning gebeurt helemaal op het toestel: een beeldmodel (DINOv2-small) vergelijkt de foto
+// met alle catalogusfoto's, en tekstherkenning (Tesseract) leest de stadsnaam als extra hint.
+const ORT_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+const TESS_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const MODEL_URLS = ['scan-model.onnx', 'https://huggingface.co/Xenova/dinov2-small/resolve/main/onnx/model_quantized.onnx'];
+let scanReady = null;
+const loadScript = src => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Laden mislukt: ' + src)); document.head.appendChild(s) });
+async function fetchModel() {
+  let cache = null; try { cache = await caches.open('bekerkast-model-v1') } catch { }
+  for (const u of MODEL_URLS) {
+    try {
+      if (cache) { const hit = await cache.match(u); if (hit) return await hit.arrayBuffer() }
+      const r = await fetch(u); if (!r.ok) continue;
+      if (cache) try { await cache.put(u, r.clone()) } catch { }
+      return await r.arrayBuffer();
+    } catch { }
+  }
+  throw new Error('Het herkenningsmodel kon niet geladen worden.');
+}
+function prepScan() {
+  if (scanReady) return scanReady;
+  scanReady = (async () => {
+    const [meta, emb] = await Promise.all([fetch('scan-meta.json').then(r => r.json()), fetch('scan-emb.bin').then(r => r.arrayBuffer())]);
+    await loadScript(ORT_URL + 'ort.min.js');
+    ort.env.wasm.wasmPaths = ORT_URL;
+    const session = await ort.InferenceSession.create(await fetchModel(), { executionProviders: ['wasm'] });
+    return { meta, emb: new Int8Array(emb), session };
+  })();
+  scanReady.catch(() => { scanReady = null });
+  return scanReady;
+}
+function loadImage(file) {
+  return new Promise((res, rej) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('Deze foto kon niet gelezen worden.')); im.src = u });
+}
+function pixelTensor(im) {
+  const S = 224, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, S, S); g.imageSmoothingQuality = 'high';
+  const sc = S / Math.max(im.naturalWidth, im.naturalHeight), w = im.naturalWidth * sc, h = im.naturalHeight * sc;
+  g.drawImage(im, (S - w) / 2, (S - h) / 2, w, h);
+  const px = g.getImageData(0, 0, S, S).data, out = new Float32Array(3 * S * S);
+  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
+  for (let i = 0; i < S * S; i++) for (let k = 0; k < 3; k++) out[k * S * S + i] = (px[i * 4 + k] / 255 - mean[k]) / std[k];
+  return new ort.Tensor('float32', out, [1, 3, S, S]);
+}
+async function visualScores(model, im) {
+  const out = await model.session.run({ pixel_values: pixelTensor(im) });
+  const t = out[Object.keys(out)[0]].data, dim = model.meta.dim, mu = model.meta.mu;
+  const v = new Float32Array(dim); let n = 0;
+  for (let k = 0; k < dim; k++) { v[k] = t[k] - mu[k]; n += v[k] * v[k] } n = Math.sqrt(n);
+  const ids = model.meta.ids, E = model.emb, sc = model.meta.sc, scores = new Map();
+  for (let r = 0; r < ids.length; r++) { let s = 0; const o = r * dim; for (let k = 0; k < dim; k++) s += v[k] * E[o + k]; scores.set(ids[r], s / n / sc) }
+  return scores;
+}
+/* tekst op de mok lezen */
+let tessWorker = null;
+async function readText(im) {
+  try {
+    if (!window.Tesseract) await loadScript(TESS_URL);
+    if (!tessWorker) { tessWorker = await Tesseract.createWorker('eng'); await tessWorker.setParameters({ tessedit_pageseg_mode: '11' }) }
+    const c = document.createElement('canvas'), f = Math.min(2, 1600 / Math.max(im.naturalWidth, im.naturalHeight));
+    c.width = im.naturalWidth * f; c.height = im.naturalHeight * f; const g = c.getContext('2d'); g.filter = 'grayscale(1)'; g.drawImage(im, 0, 0, c.width, c.height);
+    const { data } = await tessWorker.recognize(c);
+    return data.text || '';
+  } catch { return '' }
+}
+const normW = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z]/g, '');
+function lev(a, b) { const m = a.length, n = b.length, d = Array.from({ length: n + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { let p = d[0]; d[0] = i; for (let j = 1; j <= n; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, p + (a[i - 1] === b[j - 1] ? 0 : 1)); p = t } } return d[n] }
+const STOPW = new Set(['starbucks', 'starbuck', 'arbucks', 'coffee', 'cofee', 'corfee', 'beenthere', 'youarehere', 'series', 'collection']);
+function textScores(text) {
+  const words = text.split(/\s+/).map(normW).filter(w => w.length >= 4 && !STOPW.has(w));
+  const res = new Map(); if (!words.length) return res;
+  for (const i of ITEMS) {
+    const c = normW(i.n.replace(/\s*\d+$/, '')); if (c.length < 4) continue;
+    let best = 0;
+    for (const w of words) {
+      let r = 1 - lev(w, c) / Math.max(w.length, c.length);
+      if (c.startsWith(w) || c.includes(w)) r = Math.max(r, Math.min(1, w.length / c.length + .25));
+      if (r > best) best = r;
+    }
+    if (best >= .7) res.set(i.id, best);
+  }
+  return res;
+}
+/* scherm */
+const stLabel = s => s === 'h' ? '✓ Staat in de kast' : s === 'w' ? '★ Op de verlanglijst' : 'Nog niet in de kast';
+function showHits(list, kop) {
+  $('scanRes').innerHTML = `<div class="lbl-top">${kop}</div>` + list.map((i, n) => {
+    const s = st(i.id);
+    return `<button class="hit${n === 0 ? ' first' : ''}" data-id="${esc(i.id)}"><span class="ph"></span><b>${esc(i.n)}</b><small>${esc(metaLine(i))}</small><span class="st ${s}">${stLabel(s)}</span></button>`;
+  }).join('');
+  $('scanRes').querySelectorAll('.hit').forEach(b => photo(b.querySelector('.ph'), byId.get(pid(b.dataset.id))));
+  $('scanZoek').hidden = false;
+}
+$('scanBtn').addEventListener('click', () => {
+  $('scanMsg').textContent = ''; $('scanRes').innerHTML = ''; $('scanZoek').hidden = true; $('scanPrev').hidden = true; $('scanQ').value = '';
+  $('scanDlg').showModal(); prepScan().catch(() => { }); // alvast laden
+});
+$('scanClose').addEventListener('click', () => $('scanDlg').close());
+$('scanRes').addEventListener('click', e => { const b = e.target.closest('.hit'); if (b) { $('scanDlg').close(); openDialog(pid(b.dataset.id)) } });
+function scanSearch() {
+  const q = normW($('scanQ').value); if (!q) return;
+  const hits = ITEMS.filter(i => normW(i.n + i.t + i.l).includes(q)).slice(0, 12);
+  if (hits.length) showHits(hits, `Gevonden op "${esc($('scanQ').value.trim())}"`); else $('scanMsg').textContent = 'Geen mok gevonden met die naam.';
+}
+$('scanQBtn').addEventListener('click', scanSearch);
+$('scanQ').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); scanSearch() } });
+$('scanFile').addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0]; e.target.value = ''; if (!file) return;
+  $('scanRes').innerHTML = ''; $('scanZoek').hidden = true;
+  try {
+    const im = await loadImage(file); $('scanPrev').src = im.src; $('scanPrev').hidden = false;
+    $('scanMsg').textContent = scanReady ? 'Herkennen…' : 'Herkenning laden (de eerste keer ongeveer 30 MB, daarna gaat het snel)…';
+    const textP = readText(im);
+    const model = await prepScan();
+    $('scanMsg').textContent = 'Herkennen…';
+    const [vis, txt] = await Promise.all([visualScores(model, im), textP.then(textScores)]);
+    const all = new Map();
+    for (const i of ITEMS) { const s = (vis.get(i.id) ?? 0) + 0.4 * (txt.get(i.id) || 0); if (vis.has(i.id) || txt.has(i.id)) all.set(i.id, s) }
+    const top = [...all.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id]) => byId.get(id)).filter(Boolean);
+    const first = top[0], s = first ? st(first.id) : '';
+    $('scanMsg').innerHTML = first ? `Beste gok: <b>${esc(first.n)}</b> – ${s === 'h' ? 'die staat al in de kast.' : s === 'w' ? 'die staat op de verlanglijst.' : 'die staat nog niet in de kast.'} Klopt het niet? Kies hieronder de juiste.` : 'Geen mok herkend.';
+    showHits(top, 'Lijkt het meest op');
+  } catch (err) { $('scanMsg').textContent = (err && err.message) || 'Herkennen lukte niet.' }
+});
+
 renderTotals(); renderList(); connect();

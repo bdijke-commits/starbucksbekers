@@ -1,6 +1,6 @@
 // Service worker: maakt de app installeerbaar en bruikbaar zonder internet.
 // Verhoog VERSIE als je bestanden aanpast, zodat telefoons de nieuwe versie ophalen.
-const VERSIE = 'bekerkast-v4';
+const VERSIE = 'bekerkast-v6';
 const SHELL = [
   './', 'index.html', 'styles.css', 'app.js', 'config.js', 'data.json',
   'startcollectie.json', 'manifest.webmanifest',
@@ -21,7 +21,8 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return; // Firebase e.d. niet onderscheppen
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (url.pathname.endsWith('.onnx')) return; // het herkenningsmodel bewaart de app zelf // Firebase e.d. niet onderscheppen
 
   // Fotobladen: eerst uit de cache (veranderen niet)
   if (/\/s-\d+\.webp$/.test(url.pathname)) {
@@ -36,8 +37,9 @@ self.addEventListener('fetch', e => {
   }
 
   // Overige bestanden: eerst online, bij geen verbinding uit de cache
+  // cache: 'no-cache' = altijd bij GitHub controleren of er een nieuwere versie is
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         if (res.ok) { const kopie = res.clone(); caches.open(VERSIE).then(c => c.put(e.request, kopie)); }
         return res;
